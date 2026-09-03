@@ -4,10 +4,10 @@
 # Descrição: Monitoriza perdas de pacotes e analisa rotas em uma rede local.
 
 # Configurações
-$TARGET_IP = "192.168.1.1"  # Substitua pelo IP ou host que deseja monitorar
-$PACKETS = 10                # Número de pacotes a enviar
-$INTERVAL = 10              # Intervalo entre cada verificação (segundos)
-$LOG_FILE = "logs\\network_monitor_log_$(Get-Date -Format 'yyyyMMdd').txt"
+$TARGET_IP = "192.175.6.50"  # Substitua pelo IP ou host que deseja monitorizar
+$PACKETS = 10                 # Número de pacotes a enviar
+$INTERVAL = 10                # Intervalo entre cada verificação (segundos)
+$LOG_FILE = "logs\network_monitor_log_$(Get-Date -Format 'yyyyMMdd').txt"
 
 # Criar diretório de logs se não existir
 if (!(Test-Path -Path "logs")) {
@@ -20,26 +20,25 @@ if (!(Test-Path -Path "logs")) {
 Write-Host "Monitorizando rede para $TARGET_IP... (Pressione Ctrl+C para parar)"
 
 while ($true) {
-    # Monitorização com ping
+    # Monitorização com Ping
     $PING_OUTPUT = ping -n $PACKETS $TARGET_IP
     $PACKETS_SENT = ($PING_OUTPUT | Select-String -Pattern "(\d+) pacotes transmitidos").Matches.Groups[1].Value
     $PACKETS_RECEIVED = ($PING_OUTPUT | Select-String -Pattern "(\d+) recebidos").Matches.Groups[1].Value
-    $PACKET_LOSS = ($PING_OUTPUT | Select-String -Pattern "(\d+)%").Matches.Groups[1].Value
+    $PACKET_LOSS = ($PACKETS_SENT - $PACKETS_RECEIVED)
 
-    # Monitorização com tracert
+    # Monitorização com Tracert
     $TRACERT_OUTPUT = tracert -h 10 $TARGET_IP
 
-    # Obtém data e hora atual
+    # Obter data e hora atual
     $TIMESTAMP = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
-    # Registra no log
-    "$TIMESTAMP,$PACKETS_SENT,$PACKETS_RECEIVED,$PACKET_LOSS,\"$TRACERT_OUTPUT\"" | Out-File -FilePath $LOG_FILE -Append
+    # Regista no log
+    "$TIMESTAMP,$PACKETS_SENT,$PACKETS_RECEIVED,$PACKET_LOSS,`"$TRACERT_OUTPUT`"" | Out-File -FilePath $LOG_FILE -Append
 
     # Exibe no terminal
-    Write-Host "[$TIMESTAMP] Ping: $PACKETS_SENT enviados, $PACKETS_RECEIVED recebidos, Perda: $PACKET_LOSS%"
-    Write-Host "[$TIMESTAMP] Rota para $TARGET_IP:"
+    Write-Host "$TIMESTAMP Ping: $PACKETS_SENT enviados, $PACKETS_RECEIVED recebidos, Perda: $PACKET_LOSS%"
+    Write-Host "Tracert para $TARGET_IP:"
     Write-Host $TRACERT_OUTPUT
-    Write-Host "----------------------------------------"
 
     # Aguarda o próximo intervalo
     Start-Sleep -Seconds $INTERVAL
