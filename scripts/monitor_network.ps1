@@ -1,45 +1,119 @@
-# PowerShell Script Integrado para Monitorizar Rede (Ping + Tracert)
-# Autor: Assistente
-# Data: 2026-09-03
-# Descrição: Monitoriza perdas de pacotes e analisa rotas em uma rede local.
+# Script: monitor_network.ps1
+# Descrição: Monitora uma rede local para identificar perdas de pacotes e problemas de conectividade.
+# Autor: [Seu Nome]
+# Data: 03/09/2026
 
-# Configurações
-$TARGET_IP = "192.175.6.50"  # Substitua pelo IP ou host que deseja monitorizar
-$PACKETS = 10                 # Número de pacotes a enviar
-$INTERVAL = 10                # Intervalo entre cada verificação (segundos)
-$LOG_FILE = "logs\network_monitor_log_$(Get-Date -Format 'yyyyMMdd').txt"
+# Parâmetros de configuração
+$TARGET_IP = "8.8.8.8"  # Exemplo: IP do Google DNS para teste
+$PACKETS_TO_SEND = 100   # Número de pacotes a enviar
+$PACKET_SIZE = 56        # Tamanho do pacote em bytes
+$TIMEOUT = 1000           # Timeout em milissegundos
+$OUTPUT_FILE = "network_monitor_results.txt"
 
-# Criar diretório de logs se não existir
-if (!(Test-Path -Path "logs")) {
-    New-Item -ItemType Directory -Path "logs" | Out-Null
+function Test-NetworkPacketLoss {
+    param (
+        [string]$TargetIP,
+        [int]$PacketsToSend,
+        [int]$PacketSize,
+        [int]$Timeout
+    )
+    
+    # Inicializa contadores
+    $packetsSent = 0
+    $packetsReceived = 0
+    $packetLoss = 0
+    
+    # Executa o teste com Test-NetConnection (PowerShell 5.1+)
+    try {
+        $result = Test-NetConnection -ComputerName $TargetIP -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue
+        
+        if ($result) {
+            Write-Host "[`$TIMESTAMP] Conexão bem-sucedida com $TargetIP.`n"
+        } else {
+            Write-Host "[`$TIMESTAMP] Não foi possível conectar a $TargetIP.`n"
+            return
+        }
+    } catch {
+        Write-Host "[`$TIMESTAMP] Erro ao testar conexão com $TargetIP: $_`n"
+        return
+    }
+    
+    # Loop para enviar pacotes (simulação)
+    for ($i = 0; $i -lt $PacketsToSend; $i++) {
+        $packetsSent++
+        
+        # Simula um ping (substitua pelo comando real se necessário)
+        $pingResult = Test-NetConnection -ComputerName $TargetIP -Count 1 -TimeoutMilliseconds $Timeout -WarningAction SilentlyContinue
+        
+        if ($pingResult.TcpTestSucceeded) {
+            $packetsReceived++
+        } else {
+            $packetLoss++
+        }
+    }
+    
+    # Calcula a porcentagem de perda de pacotes
+    if ($packetsSent -gt 0) {
+        $packetLossPercentage = ($packetLoss / $packetsSent) * 100
+    } else {
+        $packetLossPercentage = 0
+    }
+    
+    # Exibe resultados
+    Write-Host "[`$TIMESTAMP] Teste concluído para $TargetIP:`n"
+    Write-Host "Pacotes enviados: $packetsSent`nPacotes recebidos: $packetsReceived`nPerda de pacotes: $packetLossPercentage%`n"
+    
+    # Retorna resultados
+    return @{
+        PacketsSent = $packetsSent
+        PacketsReceived = $packetsReceived
+        PacketLoss = $packetLossPercentage
+    }
 }
 
-# Cabeçalho do log
-"Data/Hora,Ping - Pacotes Enviados,Ping - Pacotes Recebidos,Ping - Perda (%),Tracert - Rota" | Out-File -FilePath $LOG_FILE -Append
+function Test-NetworkRoute {
+    param (
+        [string]$TargetIP
+    )
+    
+    # Captura a rota para o IP de destino
+    try {
+        $tracertOutput = Test-NetConnection -ComputerName $TargetIP -TraceRoute -InformationLevel Detailed -WarningAction SilentlyContinue
+        
+        if ($tracertOutput) {
+            Write-Host "[`$TIMESTAMP] Rota para $TargetIP:`n"
+            $tracertOutput | Format-Table -AutoSize | Out-String | Write-Host
+        } else {
+            Write-Host "[`$TIMESTAMP] Não foi possível capturar a rota para $TargetIP.`n"
+        }
+    } catch {
+        Write-Host "[`$TIMESTAMP] Erro ao capturar rota para $TargetIP: $_`n"
+    }
+}
 
-Write-Host "Monitorizando rede para $TARGET_IP... (Pressione Ctrl+C para parar)"
+# Executa os testes
+$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
-while ($true) {
-    # Monitorização com Ping
-    $PING_OUTPUT = ping -n $PACKETS $TARGET_IP
-    $PACKETS_SENT = ($PING_OUTPUT | Select-String -Pattern "(\d+) pacotes transmitidos").Matches.Groups[1].Value
-    $PACKETS_RECEIVED = ($PING_OUTPUT | Select-String -Pattern "(\d+) recebidos").Matches.Groups[1].Value
-    $PACKET_LOSS = ($PACKETS_SENT - $PACKETS_RECEIVED)
+# Teste de perda de pacotes
+$packetLossResult = Test-NetworkPacketLoss -TargetIP $TARGET_IP -PacketsToSend $PACKETS_TO_SEND -PacketSize $PACKET_SIZE -Timeout $TIMEOUT
 
-    # Monitorização com Tracert
-    $TRACERT_OUTPUT = tracert -h 10 $TARGET_IP
+# Teste de rota
+Test-NetworkRoute -TargetIP $TARGET_IP
 
-    # Obter data e hora atual
-    $TIMESTAMP = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+# Salva resultados em arquivo
+if ($packetLossResult) {
+    $output = @"
+[Relatório de Monitoramento de Rede - $timestamp]
+===============================================
 
-    # Regista no log
-    "$TIMESTAMP,$PACKETS_SENT,$PACKETS_RECEIVED,$PACKET_LOSS,`"$TRACERT_OUTPUT`"" | Out-File -FilePath $LOG_FILE -Append
+IP Alvo: $TARGET_IP
+Pacotes Enviados: $($packetLossResult.PacketsSent)
+Pacotes Recebidos: $($packetLossResult.PacketsReceived)
+Perda de Pacotes: $($packetLossResult.PacketLoss)%
 
-    # Exibe no terminal
-    Write-Host "$TIMESTAMP Ping: $PACKETS_SENT enviados, $PACKETS_RECEIVED recebidos, Perda: $PACKET_LOSS%"
-    Write-Host "Tracert para $TARGET_IP:"
-    Write-Host $TRACERT_OUTPUT
-
-    # Aguarda o próximo intervalo
-    Start-Sleep -Seconds $INTERVAL
+"@
+    
+    # Salva no arquivo
+    $output | Out-File -FilePath $OUTPUT_FILE -Append
+    Write-Host "Resultados salvos em: $OUTPUT_FILE`n"
 }
